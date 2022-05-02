@@ -38,6 +38,7 @@ private lateinit var b: FragmentMultiSelectPagerBinding
         super.onViewCreated(view, savedInstanceState)
 
         Glide.with(this)
+            .asBitmap()
             .load(Uri.parse(pic))
             .fitCenter()
             .into(b.multiSelectPagerPic)

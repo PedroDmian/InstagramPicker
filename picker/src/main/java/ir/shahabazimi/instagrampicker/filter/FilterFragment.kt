@@ -76,6 +76,7 @@ class FilterFragment : Fragment() {
         picBitmap = getBitmap(requireArguments().getParcelable("pic")!!)
         finalImage = picBitmap
         Glide.with(this)
+            .asBitmap()
             .load(picBitmap)
             .fitCenter()
             .into(b.filtersPreview)
@@ -85,6 +86,7 @@ class FilterFragment : Fragment() {
         filtersAdapter = FiltersAdapter {
             finalImage = it.filter.processFilter(picBitmap)
             Glide.with(this)
+                .asBitmap()
                 .load(
                     it.filter.processFilter(
                         Bitmap.createScaledBitmap(
