@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
@@ -31,9 +32,6 @@ import ir.shahabazimi.instagrampicker.classes.Const
 import ir.shahabazimi.instagrampicker.classes.InstaPickerSharedPreference
 import ir.shahabazimi.instagrampicker.databinding.FragmentGalleryBinding
 import java.io.File
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-
 
 class GalleryFragment : Fragment() {
 
@@ -41,16 +39,23 @@ class GalleryFragment : Fragment() {
     private val data = mutableListOf<GalleryModel>()
     private val selectedPics = mutableListOf<String>()
     private lateinit var b: FragmentGalleryBinding
-    private lateinit var storageExecutor: ExecutorService
-    private lateinit var storagePermission: ActivityResultLauncher<String>
-
+    private lateinit var storagePermissionLauncher: ActivityResultLauncher<Array<String>>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        storageExecutor = Executors.newSingleThreadExecutor()
-        storagePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            if (it)
+
+        storagePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            val allPermissionsGranted = permissions.entries.all { it.value }
+
+            if (!allPermissionsGranted) {
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.storage_permission_deny),
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
                 init()
+            }
         }
     }
 
@@ -85,34 +90,57 @@ class GalleryFragment : Fragment() {
     }
 
     private fun setupPermissions() {
-        val permission = ContextCompat.checkSelfPermission(
-            requireContext(),
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        )
+        val permissionsNeeded = mutableListOf<String>()
 
-        if (permission != PackageManager.PERMISSION_GRANTED) {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(
-                    requireActivity(),
-                    Manifest.permission.READ_EXTERNAL_STORAGE
-                )
-            ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val imagesPermission = ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.READ_MEDIA_IMAGES
+            )
+
+            val videoPermission = ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.READ_MEDIA_VIDEO
+            )
+
+            if (imagesPermission != PackageManager.PERMISSION_GRANTED) {
+                permissionsNeeded.add(Manifest.permission.READ_MEDIA_IMAGES)
+            }
+
+            if (videoPermission != PackageManager.PERMISSION_GRANTED) {
+                permissionsNeeded.add(Manifest.permission.READ_MEDIA_VIDEO)
+            }
+        } else {
+            val externalPermission = ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+
+            if(externalPermission != PackageManager.PERMISSION_GRANTED) {
+                permissionsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+
+        if (permissionsNeeded.isNotEmpty()) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(), Manifest.permission.READ_MEDIA_IMAGES) ||
+                ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(), Manifest.permission.READ_MEDIA_VIDEO) ||
+                ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(), Manifest.permission.READ_EXTERNAL_STORAGE)) {
+
                 val builder = AlertDialog.Builder(requireContext())
                 builder.setMessage(getString(R.string.storage_permission_message))
                     .setTitle(getString(R.string.storage_permission_title))
 
-                builder.setPositiveButton(
-                    getString(R.string.storage_permission_positive)
-                ) { _, _ ->
-                    storagePermission.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                builder.setPositiveButton(getString(R.string.storage_permission_positive)) { _, _ ->
+                    storagePermissionLauncher.launch(permissionsNeeded.toTypedArray())
                 }
-                builder.setNegativeButton(getString(R.string.storage_permission_negative)) { a, _ ->
-                    a.dismiss()
+                builder.setNegativeButton(getString(R.string.storage_permission_negative)) { dialog, _ ->
+                    dialog.dismiss()
                 }
 
                 val dialog = builder.create()
                 dialog.show()
             } else if (!InstaPickerSharedPreference(requireContext()).getStoragePermission()) {
-                storagePermission.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                storagePermissionLauncher.launch(permissionsNeeded.toTypedArray())
                 InstaPickerSharedPreference(requireContext()).setStoragePermission()
             } else {
                 Toast.makeText(
@@ -124,8 +152,7 @@ class GalleryFragment : Fragment() {
                 startActivity(Intent().also {
                     it.action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
                     it.data = Uri.fromParts("package", requireActivity().packageName, null)
-                }
-                )
+                })
             }
         } else {
             init()
@@ -151,9 +178,6 @@ class GalleryFragment : Fragment() {
             galleryAdapter.multiSelect(Const.multiSelect)
             b.galleryRecycler.layoutManager?.scrollToPosition(positionView)
         }
-
-
-
 
         galleryAdapter = GalleryAdapter { addresses ->
             if (addresses.isNotEmpty()) {
@@ -197,7 +221,6 @@ class GalleryFragment : Fragment() {
         val id = item.itemId
         val options = UCrop.Options()
         options.setCompressionFormat(Bitmap.CompressFormat.JPEG)
-        //   options.withMaxResultSize(2000, 2000)
         options.setToolbarTitle(getString(R.string.instagrampicker_crop_title))
         if (id == R.id.action_next) {
             when {
